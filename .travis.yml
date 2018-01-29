@@ -5,7 +5,7 @@ install:
   - go get github.com/dedis/Coding || true
 
 script:
-  - make test
+  - make test_playground
 
 notifications:
   email: false

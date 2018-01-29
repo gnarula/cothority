@@ -550,7 +550,7 @@ func (s *Service) AddFollow(add *AddFollow) (*EmptyReply, onet.ClientError) {
 			roster := onet.NewRoster([]*network.ServerIdentity{si})
 			last, err := s.getLastBlock(roster, add.SkipchainID)
 			if err != nil {
-				log.Error("could not get last block: ", err)
+				log.Lvl1(s.ServerIdentity(), "could not get last block: ", err)
 			} else {
 				if last.SkipChainID().Equal(add.SkipchainID) {
 					s.Storage.Follow = append(s.Storage.Follow,
