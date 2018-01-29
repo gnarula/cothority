@@ -676,6 +676,18 @@ func (s *Service) NewProtocol(ti *onet.TreeNodeInstance, conf *onet.GenericConfi
 	return
 }
 
+// AddClientKey can be used by other services to add a key so
+// they can store new Blocks
+func (s *Service) AddClientKey(pub kyber.Point) {
+	for _, p := range s.Storage.Clients {
+		if p.Equal(pub) {
+			return
+		}
+	}
+	s.Storage.Clients = append(s.Storage.Clients, pub)
+	s.save()
+}
+
 func (s *Service) verifySigs(msg, sig []byte) bool {
 	// If there are no clients, all signatures verify.
 	if len(s.Storage.Clients) == 0 {
