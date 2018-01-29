@@ -305,22 +305,22 @@ func TestCrashAfterRevocation(t *testing.T) {
 	hosts, el, _ := l.GenTree(5, true)
 	services := l.GetServices(hosts, identityService)
 	defer l.CloseAll()
-	keypair := key.NewKeyPair(tSuite)
+	kp1 := key.NewKeyPair(tSuite)
 	kp2 := key.NewKeyPair(tSuite)
-	set := anon.Set([]kyber.Point{keypair.Public, kp2.Public})
+	set := anon.Set([]kyber.Point{kp1.Public, kp2.Public})
 	for _, srvc := range services {
 		s := srvc.(*Service)
 		log.Lvl3(s.Identities)
 		s.auth.sets = append(s.auth.sets, set)
 	}
 
-	c1 := NewIdentity(el, 2, "one", keypair)
+	c1 := NewIdentity(el, 2, "one", kp1)
 	c2 := NewIdentity(el, 2, "two", nil)
 	c3 := NewIdentity(el, 2, "three", nil)
 	defer c1.Client.Close()
 	defer c2.Client.Close()
 	defer c3.Client.Close()
-	log.ErrFatal(c1.CreateIdentity(PoPAuth, set))
+	log.ErrFatal(c1.CreateIdentity(PoPAuth, set, kp1.Private))
 	log.ErrFatal(c2.AttachToIdentity(c1.ID))
 	proposeUpVote(c1)
 	log.ErrFatal(c3.AttachToIdentity(c1.ID))
@@ -406,17 +406,17 @@ func proposeUpVote(i *Identity) {
 }
 
 func createIdentity(l *onet.LocalTest, services []onet.Service, el *onet.Roster, name string) *Identity {
-	keypair := key.NewKeyPair(tSuite)
+	kp1 := key.NewKeyPair(tSuite)
 	kp2 := key.NewKeyPair(tSuite)
-	set := anon.Set([]kyber.Point{keypair.Public, kp2.Public})
+	set := anon.Set([]kyber.Point{kp1.Public, kp2.Public})
 	for _, srvc := range services {
 		s := srvc.(*Service)
 		s.auth.sets = append(s.auth.sets, set)
 	}
 
-	c := NewTestIdentity(el, 50, name, l, keypair)
+	c := NewTestIdentity(el, 50, name, l, kp1)
 	log.Error("popauth", PoPAuth)
 	log.Error("set", set)
-	log.ErrFatal(c.CreateIdentity(PoPAuth, set))
+	log.ErrFatal(c.CreateIdentity(PoPAuth, set, kp1.Private))
 	return c
 }

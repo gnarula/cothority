@@ -1,6 +1,7 @@
 package identity
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"sort"
@@ -22,12 +23,28 @@ const propagateTimeout = 10000 * time.Millisecond
 // ID represents one skipblock and corresponds to its Hash.
 type ID skipchain.SkipBlockID
 
+// Equal returns true if it's the same ID.
+func (i ID) Equal(j ID) bool {
+	return i.Equal(j)
+}
+
+// FuzzyEqual returns true if the first part of the ID
+// and the given substring match.
+func (i ID) FuzzyEqual(j []byte) bool {
+	return bytes.Compare(i[0:len(j)], j) == 0
+}
+
 // Data holds the information about all devices and the data stored in this
 // identity-blockchain. All Devices have voting-rights to the Data-structure.
 type Data struct {
+	// Threshold of how many devices need to sign to accept the new block
 	Threshold int
-	Device    map[string]*Device
-	Storage   map[string]string
+	// Device is a list of all devices allowed to sign
+	Device map[string]*Device
+	// Storage is the key/value storage
+	Storage map[string]string
+	// Roster is the new proposed roster - nil if the old is to be used
+	Roster *onet.Roster
 	// Votes for that block, mapped by name of the devices.
 	// This has to be verified with the previous data-block, because only
 	// the previous data-block has the authority to sign for a new block.
@@ -110,6 +127,11 @@ func (d *Data) Hash(suite kyber.HashFactory) ([]byte, error) {
 			return nil, err
 		}
 	}
+
+	if d.Roster != nil {
+		d.Roster.Aggregate.MarshalTo(hash)
+	}
+
 	return hash.Sum(nil), nil
 }
 
@@ -220,8 +242,6 @@ type CreateIdentity struct {
 	// list of conodes on which skipchain is created
 	Roster *onet.Roster
 	Type   AuthType
-	// Authentication via Public key. Can be left unset if SchnSig is set.
-	Public kyber.Point
 	// SchnSig is optional; one of Public or SchnSig must be set.
 	SchnSig *[]byte
 	// authentication via Linkable Ring Signature
@@ -284,7 +304,7 @@ type ProposeVoteReply struct {
 type PropagateIdentity struct {
 	*Storage
 	Tag    string
-	Public kyber.Point
+	PubStr string
 }
 
 // UpdateSkipBlock asks the service to fetch the latest SkipBlock

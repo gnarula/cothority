@@ -20,11 +20,13 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/dedis/cothority"
 	"github.com/dedis/cothority/messaging"
 	"github.com/dedis/cothority/skipchain"
 	"github.com/dedis/kyber"
 	"github.com/dedis/kyber/sign/anon"
 	"github.com/dedis/kyber/sign/schnorr"
+	"github.com/dedis/kyber/util/key"
 	"github.com/dedis/kyber/util/random"
 	"github.com/dedis/onet"
 	"github.com/dedis/onet/log"
@@ -74,7 +76,11 @@ type Service struct {
 
 // StorageMap holds the map to the storages so it can be marshaled.
 type StorageMap struct {
-	Identities map[string]*Storage
+	Identities      map[string]*Storage
+	OldSkipchainKey kyber.Scalar
+	// The key that is stored in the skipchain service to authenticate
+	// new blocks.
+	SkipchainKeyPair *key.Pair
 }
 
 // Storage stores one identity together with the skipblocks.
@@ -117,6 +123,7 @@ func (s *Service) PinRequest(req *PinRequest) (network.Message, onet.ClientError
 		return nil, onet.NewClientErrorCode(ErrorWrongPIN, "Wrong PIN")
 	}
 	s.auth.adminKeys = append(s.auth.adminKeys, req.Public)
+	s.auth.keys = append(s.auth.keys, req.Public)
 	s.save()
 	log.Lvl1("Successfully registered PIN/Public", req.PIN, req.Public)
 	return nil, nil
@@ -164,7 +171,6 @@ func (s *Service) StoreKeys(req *StoreKeys) (network.Message, onet.ClientError) 
 				log.Error("failed to hash public key")
 				return nil, onet.NewClientError(err)
 			}
-
 		}
 		msg = h.Sum(nil)
 	default:
@@ -217,12 +223,9 @@ func (s *Service) CreateIdentity(ai *CreateIdentity) (network.Message, onet.Clie
 	}
 	valid := false
 	var tag string
+	var pubStr string
 	switch ai.Type {
 	case PoPAuth:
-		if ai.Public != nil {
-			log.Error("Wrong authentication message")
-			ai.Public = nil
-		}
 		for _, set := range s.auth.sets {
 			t, err := anon.Verify(s.anonSuite, ai.Nonce, set, ctx, ai.Sig)
 			if err == nil {
@@ -234,7 +237,7 @@ func (s *Service) CreateIdentity(ai *CreateIdentity) (network.Message, onet.Clie
 				} else {
 					if n <= 0 {
 						return nil, onet.NewClientErrorCode(ErrorAuthentication,
-							"No more skipchains is allowed to create")
+							"this pop-token is out of allowed skipchains")
 					}
 				}
 				// authentication succeeded. we need to delete the nonce
@@ -243,43 +246,28 @@ func (s *Service) CreateIdentity(ai *CreateIdentity) (network.Message, onet.Clie
 			}
 		}
 	case PublicAuth:
-		if ai.Public == nil {
-			log.Error("nil public key or signature")
-			return nil, onet.NewClientErrorCode(ErrorAuthentication,
-				"wrong public key authentication data")
-		}
-		found := false
 		for _, k := range s.auth.keys {
-			if k.Equal(ai.Public) {
-				found = true
+			if schnorr.Verify(s.Suite(), k, ai.Nonce, *ai.SchnSig) == nil {
+				valid = true
+				pubStr = k.String()
 				break
 			}
 		}
-		if !found {
-			return nil, onet.NewClientErrorCode(ErrorAuthentication,
-				"No such key is stored")
-		}
-		if schnorr.Verify(s.Suite(), ai.Public, ai.Nonce, *ai.SchnSig) != nil {
-			valid = false
-		} else {
-			valid = true
-		}
-		str := ai.Public.String()
-		if n, ok := s.pointsLimits[str]; !ok {
-			s.pointsLimits[str] = defaultNumberSkipchains
+		if n, ok := s.pointsLimits[pubStr]; !ok {
+			s.pointsLimits[pubStr] = defaultNumberSkipchains
 		} else {
 			if n <= 0 {
 				return nil, onet.NewClientErrorCode(ErrorAuthentication,
-					"No more skipchains is allowed to create")
+					"Already used up all allowed skipchains")
 			}
 		}
 	default:
 		return nil, onet.NewClientErrorCode(ErrorAuthentication, "Wrong authentication type")
 	}
 	if !valid {
-		log.Error(s.ServerIdentity(), "Authentication is failed")
+		log.Error(s.ServerIdentity(), "Authentication failed - wrong signature")
 		return nil, onet.NewClientErrorCode(ErrorAuthentication,
-			"Invalid Signature on CreateIdentity")
+			"Invalid Signature in CreateIdentity")
 	}
 
 	log.Lvlf3("%s Creating new identity with data %+v", s.ServerIdentity(), ai.Data)
@@ -287,21 +275,22 @@ func (s *Service) CreateIdentity(ai *CreateIdentity) (network.Message, onet.Clie
 		Latest: ai.Data,
 	}
 	log.Lvl3("Creating Root-skipchain")
+	priv := s.verifySkipchainAuth()
 	var cerr onet.ClientError
-	ids.SCRoot, cerr = s.skipchain.CreateGenesis(ai.Roster, 10, 10,
-		[]skipchain.VerifierID{}, nil, nil)
+	ids.SCRoot, cerr = s.skipchain.CreateGenesisSignature(ai.Roster, 10, 10,
+		[]skipchain.VerifierID{}, nil, nil, priv)
 	if cerr != nil {
 		return nil, cerr
 	}
 	log.Lvl3("Creating Data-skipchain", ai.Data)
-	ids.SCData, cerr = s.skipchain.CreateGenesis(ids.SCRoot.Roster, 10, 10,
-		VerificationIdentity, ai.Data, ids.SCRoot.Hash)
+	ids.SCData, cerr = s.skipchain.CreateGenesisSignature(ids.SCRoot.Roster, 10, 10,
+		VerificationIdentity, ai.Data, ids.SCRoot.Hash, priv)
 	if cerr != nil {
 		return nil, cerr
 	}
 
 	roster := ids.SCRoot.Roster
-	replies, err := s.propagateIdentity(roster, &PropagateIdentity{ids, tag, ai.Public}, propagateTimeout)
+	replies, err := s.propagateIdentity(roster, &PropagateIdentity{ids, tag, pubStr}, propagateTimeout)
 	if err != nil {
 		return nil, onet.NewClientErrorCode(ErrorOnet, err.Error())
 	}
@@ -415,7 +404,7 @@ func (s *Service) ProposeVote(v *ProposeVote) (network.Message, onet.ClientError
 			// It can either be an update-vote (accepted), or a second
 			// vote (refused).
 			if schnorr.Verify(s.Suite(), owner.Point, hash, oldvote) == nil {
-				return onet.NewClientErrorCode(ErrorVoteDouble, "Already voted for that block")
+				log.Lvl2("Already voted for that block")
 			}
 		}
 		log.Lvl3(v.Signer, "voted", v.Signature)
@@ -445,7 +434,8 @@ func (s *Service) ProposeVote(v *ProposeVote) (network.Message, onet.ClientError
 
 		// Making a new data-skipblock
 		log.Lvl3("Sending data-block with", sid.Proposed.Device)
-		reply, cerr := s.skipchain.StoreSkipBlock(sid.SCData, nil, sid.Proposed)
+		priv := s.verifySkipchainAuth()
+		reply, cerr := s.skipchain.StoreSkipBlockSignature(sid.SCData, sid.Proposed.Roster, sid.Proposed, priv)
 		if cerr != nil {
 			return nil, cerr
 		}
@@ -498,7 +488,16 @@ func (s *Service) VerifyBlock(sbID []byte, sb *skipchain.SkipBlock) bool {
 			}
 		}
 		if latest == nil {
-			return errors.New("Backlink was not our latest block")
+			// If we don't have the block, the leader should have it.
+			var cerr onet.ClientError
+			latest, cerr = s.skipchain.GetSingleBlock(sb.Roster, sb.BackLinkIDs[0])
+			if cerr != nil {
+				return cerr
+			}
+			if latest == nil {
+				// Block is not here and not with the leader.
+				return errors.New("didn't find latest block")
+			}
 		}
 		_, dataInt, err = network.Unmarshal(latest.Data, s.Suite())
 		if err != nil {
@@ -508,10 +507,11 @@ func (s *Service) VerifyBlock(sbID []byte, sb *skipchain.SkipBlock) bool {
 		sigCnt := 0
 		for dev, sig := range data.Votes {
 			if pub := dataLatest.Device[dev]; pub != nil {
-				if err := schnorr.Verify(s.Suite(), pub.Point, hash, sig); err != nil {
-					return err
+				log.Lvl3("Against public-key", pub.Point)
+				if err := schnorr.Verify(s.Suite(), pub.Point, hash, sig); err == nil {
+					log.Lvl2("Found correct signature of device", dev)
+					sigCnt++
 				}
-				sigCnt++
 			} else {
 				log.Lvl2("Not representative signature detected:", dev)
 			}
@@ -636,18 +636,17 @@ func (s *Service) propagateIdentityHandler(msg network.Message) {
 			s.tagsLimits[string(pi.Tag)] = defaultNumberSkipchains
 		}
 		s.tagsLimits[string(pi.Tag)]--
-	} else if pi.Public != nil {
-		str := pi.Public.String()
-		if n, ok := s.pointsLimits[str]; ok {
+	} else if pi.PubStr != "" {
+		if n, ok := s.pointsLimits[pi.PubStr]; ok {
 			if n <= 0 {
 				// unreachable in normal work mode of nodes
 				log.Error("No more skipchains is allowed to create")
 				return
 			}
 		} else {
-			s.pointsLimits[str] = defaultNumberSkipchains
+			s.pointsLimits[pi.PubStr] = defaultNumberSkipchains
 		}
-		s.pointsLimits[str]--
+		s.pointsLimits[pi.PubStr]--
 	}
 	id := ID(pi.SCData.Hash)
 	if s.getIdentityStorage(id) != nil {
@@ -678,6 +677,23 @@ func (s *Service) setIdentityStorage(id ID, is *Storage) {
 	log.Lvlf3("%s %x %v", s.Context.ServerIdentity(), id[0:8], is.Latest.Device)
 	s.Identities[string(id)] = is
 	s.save()
+}
+
+// verifySkipchainAuth adds a new key for authentication to the
+// skipchain service, but only if it already has one. Else it would
+// lock down the service directly.
+func (s *Service) verifySkipchainAuth() kyber.Scalar {
+	ss := s.Service(skipchain.ServiceName).(*skipchain.Service)
+	if len(ss.Storage.Clients) > 0 {
+		if s.StorageMap.SkipchainKeyPair == nil {
+			// Clients are registered with the skipchain, so add a key for
+			// us, too.
+			s.StorageMap.SkipchainKeyPair = key.NewKeyPair(cothority.Suite)
+		}
+		ss.AddClientKey(s.StorageMap.SkipchainKeyPair.Public)
+		return s.StorageMap.SkipchainKeyPair.Private
+	}
+	return nil
 }
 
 // saves the actual identity
@@ -718,8 +734,10 @@ func (s *Service) tryLoad() error {
 func newIdentityService(c *onet.Context) (onet.Service, error) {
 	s := &Service{
 		ServiceProcessor: onet.NewServiceProcessor(c),
-		StorageMap:       &StorageMap{make(map[string]*Storage)},
-		skipchain:        skipchain.NewClient(),
+		StorageMap: &StorageMap{
+			Identities: make(map[string]*Storage),
+		},
+		skipchain: skipchain.NewClient(),
 	}
 	if as, ok := c.Suite().(anon.Suite); ok {
 		s.anonSuite = as

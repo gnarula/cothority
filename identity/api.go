@@ -115,10 +115,10 @@ func NewIdentity(r *onet.Roster, threshold int, owner string, kp *key.Pair) *Ide
 }
 
 // NewIdentityFromCothority searches for a given cothority
-func NewIdentityFromCothority(el *onet.Roster, id ID) (*Identity, error) {
+func NewIdentityFromCothority(r *onet.Roster, id ID) (*Identity, error) {
 	iden := &Identity{
 		Client:    onet.NewClient(ServiceName, cothority.Suite),
-		Cothority: el,
+		Cothority: r,
 		ID:        id,
 	}
 	err := iden.DataUpdate()
@@ -179,6 +179,7 @@ func (i *Identity) AttachToIdentity(ID ID) onet.ClientError {
 		return onet.NewClientErrorCode(ErrorAccountDouble, "Adding with an existing account-name")
 	}
 	confPropose := i.Data.Copy()
+	confPropose.Roster = nil
 	confPropose.Device[i.DeviceName] = &Device{i.Public}
 	cerr = i.ProposeSend(confPropose)
 	if cerr != nil {
@@ -187,7 +188,7 @@ func (i *Identity) AttachToIdentity(ID ID) onet.ClientError {
 	return nil
 }
 
-func (i *Identity) popAuth(au *Authenticate, atts []kyber.Point) (*CreateIdentity, error) {
+func (i *Identity) popAuth(au *Authenticate, atts []kyber.Point, priv kyber.Scalar) (*CreateIdentity, error) {
 	var as anon.Suite
 	var ok bool
 
@@ -203,36 +204,37 @@ func (i *Identity) popAuth(au *Authenticate, atts []kyber.Point) (*CreateIdentit
 			break
 		}
 	}
-	sigtag := anon.Sign(as, au.Nonce, anon.Set(atts), au.Ctx, index, i.Private)
-	cr := &CreateIdentity{}
-	cr.Data = i.Data
-	cr.Roster = i.Cothority
-	cr.Sig = sigtag
-	cr.Nonce = au.Nonce
+	sigtag := anon.Sign(as, au.Nonce, anon.Set(atts), au.Ctx, index, priv)
+	cr := &CreateIdentity{
+		Data:   i.Data,
+		Roster: i.Cothority,
+		Sig:    sigtag,
+		Nonce:  au.Nonce,
+	}
 	return cr, nil
 }
 
-func (i *Identity) publicAuth(msg []byte) (*CreateIdentity, error) {
-	sig, err := schnorr.Sign(i.Client.Suite(), i.Private, msg)
+func (i *Identity) publicAuth(nonce []byte, priv kyber.Scalar) (*CreateIdentity, error) {
+	sig, err := schnorr.Sign(i.Client.Suite(), priv, nonce)
 	if err != nil {
 		return nil, err
 	}
-	cr := &CreateIdentity{}
-	cr.Data = i.Data
-	cr.Sig = []byte{}
-	cr.Roster = i.Cothority
-	cr.Public = i.Public
-	cr.SchnSig = &sig
-	cr.Nonce = msg
+	cr := &CreateIdentity{
+		Data:    i.Data,
+		Sig:     []byte{},
+		Roster:  i.Cothority,
+		SchnSig: &sig,
+		Nonce:   nonce,
+	}
 	return cr, nil
 }
 
 // CreateIdentity asks the identityService to create a new Identity
-func (i *Identity) CreateIdentity(t AuthType, atts []kyber.Point) onet.ClientError {
+func (i *Identity) CreateIdentity(t AuthType, atts []kyber.Point, priv kyber.Scalar) onet.ClientError {
 	log.Lvl3("Creating identity", i)
 
 	// request for authentication
-	si := i.Cothority.RandomServerIdentity()
+	si := i.Cothority.List[0]
 	au := &Authenticate{[]byte{}, []byte{}}
 	cerr := i.Client.SendProtobuf(si, au, au)
 	if cerr != nil {
@@ -243,9 +245,9 @@ func (i *Identity) CreateIdentity(t AuthType, atts []kyber.Point) onet.ClientErr
 	var err error
 	switch t {
 	case PoPAuth:
-		cr, err = i.popAuth(au, atts)
+		cr, err = i.popAuth(au, atts, priv)
 	case PublicAuth:
-		cr, err = i.publicAuth(au.Nonce)
+		cr, err = i.publicAuth(au.Nonce, priv)
 	default:
 		return onet.NewClientErrorCode(ErrorAuthentication, "wrong type of authentication")
 	}
@@ -266,7 +268,7 @@ func (i *Identity) CreateIdentity(t AuthType, atts []kyber.Point) onet.ClientErr
 // ProposeVote
 func (i *Identity) ProposeSend(d *Data) onet.ClientError {
 	log.Lvl3("Sending proposal", d)
-	err := i.Client.SendProtobuf(i.Cothority.RandomServerIdentity(),
+	err := i.Client.SendProtobuf(i.Cothority.List[0],
 		&ProposeSend{i.ID, d}, nil)
 	i.Proposed = d
 	return err
@@ -277,7 +279,7 @@ func (i *Identity) ProposeSend(d *Data) onet.ClientError {
 func (i *Identity) ProposeUpdate() onet.ClientError {
 	log.Lvl3("Updating proposal")
 	cnc := &ProposeUpdateReply{}
-	err := i.Client.SendProtobuf(i.Cothority.RandomServerIdentity(), &ProposeUpdate{
+	err := i.Client.SendProtobuf(i.Cothority.List[0], &ProposeUpdate{
 		ID: i.ID,
 	}, cnc)
 	if err != nil {
@@ -308,8 +310,9 @@ func (i *Identity) ProposeVote(accept bool) onet.ClientError {
 	if err != nil {
 		return onet.NewClientErrorCode(ErrorOnet, err.Error())
 	}
+	log.Lvl3("Signed with public-key:", cothority.Suite.Point().Mul(i.Private, nil).String())
 	pvr := &ProposeVoteReply{}
-	cerr := i.Client.SendProtobuf(i.Cothority.RandomServerIdentity(), &ProposeVote{
+	cerr := i.Client.SendProtobuf(i.Cothority.List[0], &ProposeVote{
 		ID:        i.ID,
 		Signer:    i.DeviceName,
 		Signature: sig,
@@ -335,12 +338,16 @@ func (i *Identity) DataUpdate() onet.ClientError {
 		return onet.NewClientErrorCode(ErrorListMissing, "Didn't find any list in the cothority")
 	}
 	cur := &DataUpdateReply{}
-	err := i.Client.SendProtobuf(i.Cothority.RandomServerIdentity(),
+	err := i.Client.SendProtobuf(i.Cothority.List[0],
 		&DataUpdate{ID: i.ID}, cur)
 	if err != nil {
 		return err
 	}
 	// TODO - verify new data
 	i.Data = cur.Data
+	// If a new roster has been defined, store it.
+	if cur.Data.Roster != nil {
+		i.Cothority = cur.Data.Roster
+	}
 	return nil
 }

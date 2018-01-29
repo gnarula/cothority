@@ -64,7 +64,6 @@ func TestService_CreateIdentity3(t *testing.T) {
 	ci.Type = PublicAuth
 	ci.Data = il
 	ci.Roster = el
-	ci.Public = kp.Public
 	ci.Nonce = make([]byte, nonceSize)
 	random.Bytes(ci.Nonce, tSuite.RandomStream())
 	service.auth.nonces[string(ci.Nonce)] = struct{}{}
