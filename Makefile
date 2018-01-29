@@ -8,9 +8,10 @@ include $(shell go env GOPATH)/src/github.com/dedis/Coding/bin/Makefile.base
 # for more than once in Travis. Change `make test` in .travis.yml
 # to `make test_playground`.
 test_playground:
+	cd ../onet; git checkout test_skipchains; cd ../skipchain; \
 	cd skipchain; \
 	for a in $$( seq 100 ); do \
-	  go test -v -race -short || exit 1 ; \
+	  go test -v -race -short -run MultiLevel || exit 1 ; \
 	done;
 
 # Other targets are:
