@@ -83,7 +83,7 @@ func linkPin(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	addr := network.NewTCPAddress(fmt.Sprintf("%s:%s", addrs[0], port))
+	addr := network.NewTCPAddress(net.JoinHostPort(addrs[0], port))
 	si := &network.ServerIdentity{Address: addr}
 
 	cfg := loadConfigAdminOrFail(c)
@@ -91,7 +91,7 @@ func linkPin(c *cli.Context) error {
 	kp := key.NewKeyPair(cothority.Suite)
 	client := onet.NewClient(identity.ServiceName, cothority.Suite)
 	if err := client.SendProtobuf(si, &identity.PinRequest{PIN: pin, Public: kp.Public}, nil); err != nil {
-		if err.ErrorCode() == identity.ErrorWrongPIN && pin == "" {
+		if err.Error() == "error" && pin == "" {
 			log.Info("Please read PIN in server-log")
 			return nil
 		}
@@ -115,7 +115,7 @@ func getClient(c *cli.Context, arg string) (*ciscConfig, *network.ServerIdentity
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	addr := network.NewTCPAddress(fmt.Sprintf("%s:%s", addrs[0], port))
+	addr := network.NewTCPAddress(net.JoinHostPort(addrs[0], port))
 	si := &network.ServerIdentity{Address: addr}
 
 	cfg := loadConfigAdminOrFail(c)
