@@ -91,7 +91,7 @@ func linkPin(c *cli.Context) error {
 	kp := key.NewKeyPair(cothority.Suite)
 	client := onet.NewClient(identity.ServiceName, cothority.Suite)
 	if err := client.SendProtobuf(si, &identity.PinRequest{PIN: pin, Public: kp.Public}, nil); err != nil {
-		if err.Error() == "error" && pin == "" {
+		if err.ErrorCode() == identity.ErrorWrongPIN && pin == "" {
 			log.Info("Please read PIN in server-log")
 			return nil
 		}

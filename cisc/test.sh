@@ -478,7 +478,7 @@ EOF
   local n
   for (( n=1; n<=$1; n++ ))
   do
-    sed -n "$((4*$n-3)),$((4*$n))p" public.toml >> pop_desc.toml
+    sed -n "$((5*$n-4)),$((5*$n))p" public.toml >> pop_desc.toml
   done
 }
 
