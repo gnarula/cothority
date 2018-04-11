@@ -75,10 +75,10 @@ func GetElection(roster *onet.Roster, id skipchain.SkipBlockID) (*Election, erro
 		return nil, fmt.Errorf("no election structure in %s", id.Short())
 	}
 	election := transaction.Election
-	err = election.setStage()
-	if err != nil {
-		return nil, err
-	}
+	// err = election.setStage()
+	// if err != nil {
+	// return nil, err
+	// }
 	return election, nil
 }
 
