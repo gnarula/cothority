@@ -2,6 +2,7 @@ package lib
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/dedis/onet"
 	"github.com/dedis/protobuf"
@@ -51,9 +52,11 @@ func StoreUsingWebsocket(id skipchain.SkipBlockID, roster *onet.Roster, transact
 
 // Store appends a new block holding data to an existing skipchain using the
 // skipchain service
-func Store(s *skipchain.Service, ID skipchain.SkipBlockID, transaction *Transaction) error {
+func Store(mutex *sync.Mutex, s *skipchain.Service, ID skipchain.SkipBlockID, transaction *Transaction) error {
 	db := s.GetDB()
+	mutex.Lock()
 	latest, err := db.GetLatest(db.GetByID(ID))
+	mutex.Unlock()
 	if err != nil {
 		return errors.New("couldn't find latest block: " + err.Error())
 	}

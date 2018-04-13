@@ -2,6 +2,7 @@ package lib
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/dedis/kyber"
 	"github.com/dedis/onet"
@@ -33,10 +34,12 @@ type Link struct {
 }
 
 // GetMaster retrieves the master object from its skipchain.
-func GetMaster(s *skipchain.Service, id skipchain.SkipBlockID) (*Master, error) {
+func GetMaster(mutex *sync.Mutex, s *skipchain.Service, id skipchain.SkipBlockID) (*Master, error) {
+	mutex.Lock()
 	block, err := s.GetSingleBlockByIndex(
 		&skipchain.GetSingleBlockByIndex{Genesis: id, Index: 1},
 	)
+	mutex.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -49,10 +52,12 @@ func GetMaster(s *skipchain.Service, id skipchain.SkipBlockID) (*Master, error) 
 }
 
 // Links returns all the links appended to the master skipchain.
-func (m *Master) Links(s *skipchain.Service) ([]*Link, error) {
+func (m *Master) Links(mutex *sync.Mutex, s *skipchain.Service) ([]*Link, error) {
+	mutex.Lock()
 	block, err := s.GetSingleBlockByIndex(
 		&skipchain.GetSingleBlockByIndex{Genesis: m.ID, Index: 0},
 	)
+	mutex.Unlock()
 	if err != nil {
 		return nil, err
 	}

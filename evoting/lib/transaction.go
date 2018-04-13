@@ -3,6 +3,7 @@ package lib
 import (
 	"errors"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/dedis/kyber/sign/schnorr"
@@ -77,12 +78,12 @@ func NewTransaction(data interface{}, user uint32, signature []byte) *Transactio
 }
 
 // Digest appends the digits of sciper to master genesis skipblock ID
-func (t *Transaction) Digest(s *skipchain.Service, genesis skipchain.SkipBlockID) []byte {
+func (t *Transaction) Digest(mutex *sync.Mutex, s *skipchain.Service, genesis skipchain.SkipBlockID) []byte {
 	var election *Election
 	if t.Election != nil {
 		election = t.Election
 	} else {
-		election, _ = GetElection(s, genesis)
+		election, _ = GetElection(mutex, s, genesis)
 	}
 	// Master or Link transaction
 	if election == nil {
@@ -97,13 +98,13 @@ func (t *Transaction) Digest(s *skipchain.Service, genesis skipchain.SkipBlockID
 }
 
 // Verify checks that the corresponding transaction is valid before storing it.
-func (t *Transaction) Verify(genesis skipchain.SkipBlockID, s *skipchain.Service) error {
-	digest := t.Digest(s, genesis)
+func (t *Transaction) Verify(mutex *sync.Mutex, genesis skipchain.SkipBlockID, s *skipchain.Service) error {
+	digest := t.Digest(mutex, s, genesis)
 	db := s.GetDB()
 	if t.Master != nil {
 		return nil
 	} else if t.Link != nil {
-		master, err := GetMaster(s, genesis)
+		master, err := GetMaster(mutex, s, genesis)
 		if err != nil {
 			return err
 		}
@@ -122,7 +123,7 @@ func (t *Transaction) Verify(genesis skipchain.SkipBlockID, s *skipchain.Service
 			return errors.New("open error: invalid end date")
 		}
 
-		master, err := GetMaster(s, election.Master)
+		master, err := GetMaster(mutex, s, election.Master)
 		if err != nil {
 			return err
 		}
@@ -131,7 +132,7 @@ func (t *Transaction) Verify(genesis skipchain.SkipBlockID, s *skipchain.Service
 		}
 		return nil
 	} else if t.Ballot != nil {
-		election, err := GetElection(s, genesis)
+		election, err := GetElection(mutex, s, genesis)
 		if err != nil {
 			return err
 		}
@@ -146,7 +147,9 @@ func (t *Transaction) Verify(genesis skipchain.SkipBlockID, s *skipchain.Service
 			return errors.New("ballot user-id differs from transaction user-id")
 		}
 
+		mutex.Lock()
 		latest, err := db.GetLatest(db.GetByID(election.ID))
+		mutex.Unlock()
 		transaction := UnmarshalTransaction(latest.Data)
 		if err != nil {
 			return err
@@ -158,7 +161,7 @@ func (t *Transaction) Verify(genesis skipchain.SkipBlockID, s *skipchain.Service
 		}
 		return nil
 	} else if t.Mix != nil {
-		election, err := GetElection(s, genesis)
+		election, err := GetElection(mutex, s, genesis)
 		roster := election.Roster
 		if err != nil {
 			return err
@@ -178,7 +181,7 @@ func (t *Transaction) Verify(genesis skipchain.SkipBlockID, s *skipchain.Service
 		}
 		return nil
 	} else if t.Partial != nil {
-		election, err := GetElection(s, genesis)
+		election, err := GetElection(mutex, s, genesis)
 		roster := election.Roster
 		if err != nil {
 			return err

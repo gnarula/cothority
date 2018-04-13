@@ -3,6 +3,7 @@ package lib
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/dedis/kyber"
 	"github.com/dedis/onet"
@@ -62,11 +63,13 @@ type footer struct {
 }
 
 // GetElection fetches the election structure from its skipchain and sets the stage.
-func GetElection(s *skipchain.Service, id skipchain.SkipBlockID) (*Election, error) {
+func GetElection(mutex *sync.Mutex, s *skipchain.Service, id skipchain.SkipBlockID) (*Election, error) {
 
+	mutex.Lock()
 	block, err := s.GetSingleBlockByIndex(
 		&skipchain.GetSingleBlockByIndex{Genesis: id, Index: 1},
 	)
+	mutex.Unlock()
 	if err != nil {
 		return nil, err
 	}
@@ -77,16 +80,18 @@ func GetElection(s *skipchain.Service, id skipchain.SkipBlockID) (*Election, err
 		return nil, fmt.Errorf("no election structure in %s", id.Short())
 	}
 	election := transaction.Election
-	err = election.setStage(s)
+	err = election.setStage(mutex, s)
 	if err != nil {
 		return nil, err
 	}
 	return election, nil
 }
 
-func (e *Election) setStage(s *skipchain.Service) error {
+func (e *Election) setStage(mutex *sync.Mutex, s *skipchain.Service) error {
 	db := s.GetDB()
+	mutex.Lock()
 	latest, err := db.GetLatest(db.GetByID(e.ID))
+	mutex.Unlock()
 	if err != nil {
 		return errors.New("error getting latest skipblock")
 	}
