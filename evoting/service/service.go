@@ -51,8 +51,9 @@ type Service struct {
 
 	skipchain *skipchain.Service
 
-	mutex   sync.Mutex
-	storage *storage
+	mutex      sync.Mutex
+	globalLock sync.Mutex
+	storage    *storage
 
 	pin string // pin is the current service number.
 }
@@ -110,6 +111,8 @@ func (s *Service) Link(req *evoting.Link) (*evoting.LinkReply, error) {
 
 // Open message hander. Create a new election with accompanying skipchain.
 func (s *Service) Open(req *evoting.Open) (*evoting.OpenReply, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
 	master, err := lib.GetMaster(s.skipchain, req.ID)
 	if err != nil {
 		return nil, err
@@ -241,6 +244,8 @@ func (s *Service) LookupSciper(req *evoting.LookupSciper) (*evoting.LookupSciper
 
 // Cast message handler. Cast a ballot in a given election.
 func (s *Service) Cast(req *evoting.Cast) (*evoting.CastReply, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
 	if !s.leader() {
 		return nil, errOnlyLeader
 	}
@@ -253,6 +258,8 @@ func (s *Service) Cast(req *evoting.Cast) (*evoting.CastReply, error) {
 
 // GetElections message handler. Return all elections in which the given user participates.
 func (s *Service) GetElections(req *evoting.GetElections) (*evoting.GetElectionsReply, error) {
+	s.globalLock.Lock()
+	defer s.globalLock.Unlock()
 	master, err := lib.GetMaster(s.skipchain, req.Master)
 	if err != nil {
 		return nil, err
