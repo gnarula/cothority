@@ -2,6 +2,7 @@ package lib
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -203,7 +204,8 @@ func (t *Transaction) Verify(genesis skipchain.SkipBlockID, s *skipchain.Service
 			return err
 		}
 
-		mixes, err := election.Mixes()
+		mixes, err := election.Mixes(s)
+		fmt.Println("Got mixes")
 		if err != nil {
 			return err
 		} else if len(mixes) == len(roster.List) {
@@ -211,6 +213,7 @@ func (t *Transaction) Verify(genesis skipchain.SkipBlockID, s *skipchain.Service
 		} else if !election.IsCreator(t.User) {
 			return errors.New("shuffle error: user is not election creator")
 		}
+		fmt.Println("no errors in mixes, returning nil")
 		return nil
 	} else if t.Partial != nil {
 		election, err := GetElection(s, genesis, false, t.User)
@@ -223,14 +226,14 @@ func (t *Transaction) Verify(genesis skipchain.SkipBlockID, s *skipchain.Service
 			return err
 		}
 
-		mixes, err := election.Mixes()
+		mixes, err := election.Mixes(s)
 		if err != nil {
 			return err
 		} else if len(mixes) != len(roster.List) {
 			return errors.New("decrypt error, election not shuffled yet")
 		}
 
-		partials, err := election.Partials()
+		partials, err := election.Partials(s)
 		if err != nil {
 			return err
 		} else if len(partials) == len(roster.List) {

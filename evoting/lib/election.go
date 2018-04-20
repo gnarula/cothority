@@ -136,10 +136,14 @@ func (e *Election) setStage(s *skipchain.Service) error {
 }
 
 // Box accumulates all the ballots while only keeping the last ballot for each user.
-func (e *Election) Box() (*Box, error) {
-	client := skipchain.NewClient()
+func (e *Election) Box(s *skipchain.Service) (*Box, error) {
+	// client := skipchain.NewClient()
 
-	block, err := client.GetSingleBlockByIndex(e.Roster, e.ID, 0)
+	block, err := s.GetSingleBlockByIndex(
+		&skipchain.GetSingleBlockByIndex{
+			Genesis: e.ID,
+			Index:   0,
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +159,10 @@ func (e *Election) Box() (*Box, error) {
 		if len(block.ForwardLink) <= 0 {
 			break
 		}
-		block, _ = client.GetSingleBlock(e.Roster, block.ForwardLink[0].To)
+		block, _ = s.GetSingleBlock(
+			&skipchain.GetSingleBlock{
+				ID: block.ForwardLink[0].To,
+			})
 	}
 
 	// Reverse ballot list
@@ -181,10 +188,14 @@ func (e *Election) Box() (*Box, error) {
 }
 
 // Mixes returns all mixes created by the roster conodes.
-func (e *Election) Mixes() ([]*Mix, error) {
-	client := skipchain.NewClient()
+func (e *Election) Mixes(s *skipchain.Service) ([]*Mix, error) {
 
-	block, err := client.GetSingleBlockByIndex(e.Roster, e.ID, 0)
+	block, err := s.GetSingleBlockByIndex(
+		&skipchain.GetSingleBlockByIndex{
+			Genesis: e.ID,
+			Index:   0,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -199,16 +210,24 @@ func (e *Election) Mixes() ([]*Mix, error) {
 		if len(block.ForwardLink) <= 0 {
 			break
 		}
-		block, _ = client.GetSingleBlock(e.Roster, block.ForwardLink[0].To)
+		block, _ = s.GetSingleBlock(
+			&skipchain.GetSingleBlock{
+				ID: block.ForwardLink[0].To,
+			},
+		)
 	}
 	return mixes, nil
 }
 
 // Partials returns the partial decryption for each roster conode.
-func (e *Election) Partials() ([]*Partial, error) {
-	client := skipchain.NewClient()
+func (e *Election) Partials(s *skipchain.Service) ([]*Partial, error) {
 
-	block, err := client.GetSingleBlockByIndex(e.Roster, e.ID, 0)
+	block, err := s.GetSingleBlockByIndex(
+		&skipchain.GetSingleBlockByIndex{
+			Genesis: e.ID,
+			Index:   0,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -224,7 +243,11 @@ func (e *Election) Partials() ([]*Partial, error) {
 			break
 		}
 		var err error
-		block, err = client.GetSingleBlock(e.Roster, block.ForwardLink[0].To)
+		block, err = s.GetSingleBlock(
+			&skipchain.GetSingleBlock{
+				ID: block.ForwardLink[0].To,
+			},
+		)
 		if err != nil {
 			break
 		}
