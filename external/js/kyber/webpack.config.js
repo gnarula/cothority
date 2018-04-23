@@ -14,7 +14,16 @@ const nodeConfig = {
       {
         test: /\.tsx?$/,
         exclude: /(node_modules|bower_components)/,
-        use: "ts-loader"
+        use: [
+          {
+            loader: "babel-loader",
+            options: {
+              presets: ["env"],
+              plugins: [require("babel-plugin-transform-object-rest-spread")]
+            }
+          },
+          "ts-loader"
+        ]
       }
     ]
   },
@@ -37,7 +46,16 @@ const browserConfig = {
       {
         test: /\.tsx?$/,
         exclude: /(node_modules|bower_components)/,
-        use: "ts-loader"
+        use: [
+          {
+            loader: "babel-loader",
+            options: {
+              presets: ["env"],
+              plugins: [require("babel-plugin-transform-object-rest-spread")]
+            }
+          },
+          "ts-loader"
+        ]
       }
     ]
   },
