@@ -152,6 +152,7 @@ func (p *SubFtCosi) Dispatch() error {
 				}
 				commitments = append(commitments, commitment)
 			case <-t:
+				log.Lvlf3("time out reached %v, commitment(s): %d", t, len(commitments))
 				break loop
 			}
 		}

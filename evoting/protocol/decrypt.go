@@ -1,6 +1,8 @@
 package protocol
 
 import (
+	"fmt"
+
 	"github.com/dedis/kyber"
 	"github.com/dedis/onet"
 	"github.com/dedis/onet/network"
@@ -85,9 +87,16 @@ func (d *Decrypt) HandlePrompt(prompt MessagePromptDecrypt) error {
 	flag := Verify(d.Election.Key, box, mixes)
 	partial := &lib.Partial{Points: points, Flag: flag, Node: d.Name()}
 	transaction := lib.NewTransaction(partial, d.User, d.Signature)
-	if err = lib.StoreUsingWebsocket(d.Election.ID, d.Election.Roster, transaction); err != nil {
+	db := d.Skipchain.GetDB()
+	latest, err := db.GetLatest(db.GetByID(d.Election.ID))
+	if err != nil {
 		return err
 	}
+	if err = lib.StoreUsingWebsocket(latest.Hash, d.Election.Roster, transaction); err != nil {
+		fmt.Println("Conode with public id", d.TreeNodeInstance.ServerIdentity().Public, " failed to store a decryption", err)
+		return err
+	}
+	fmt.Println("Conode with public id", d.TreeNodeInstance.ServerIdentity().Public, " stored a decryption")
 
 	if d.IsLeaf() {
 		return d.SendTo(d.Root(), &TerminateDecrypt{})

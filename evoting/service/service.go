@@ -37,7 +37,7 @@ func init() {
 }
 
 // timeout for protocol termination.
-const timeout = 60 * time.Second
+const timeout = 180 * time.Second
 
 // serviceID is the onet identifier.
 var serviceID onet.ServiceID
@@ -635,6 +635,7 @@ func new(context *onet.Context) (onet.Service, error) {
 		},
 		skipchain: context.Service(skipchain.ServiceName).(*skipchain.Service),
 	}
+	service.skipchain.SetBFTTimeout(120 * time.Second)
 
 	service.RegisterHandlers(
 		service.Ping,

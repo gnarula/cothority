@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/dedis/cothority"
 	"github.com/dedis/kyber/proof"
@@ -95,9 +96,16 @@ func (s *Shuffle) HandlePrompt(prompt MessagePrompt) error {
 	}
 	mix := &lib.Mix{Ballots: lib.Combine(g, d), Proof: proof, Node: s.Name()}
 	transaction := lib.NewTransaction(mix, s.User, s.Signature)
-	if err := lib.StoreUsingWebsocket(s.Election.ID, s.Election.Roster, transaction); err != nil {
+	db := s.Skipchain.GetDB()
+	latest, err := db.GetLatest(db.GetByID(s.Election.ID))
+	if err != nil {
 		return err
 	}
+	if err := lib.StoreUsingWebsocket(latest.Hash, s.Election.Roster, transaction); err != nil {
+		fmt.Println("Conode with public id", s.TreeNodeInstance.ServerIdentity().Public, " failed to store a shuffle", err)
+		return err
+	}
+	fmt.Println("Conode with public id", s.TreeNodeInstance.ServerIdentity().Public, " stored a shuffle")
 
 	if s.IsLeaf() {
 		return s.SendTo(s.Root(), &TerminateShuffle{})
