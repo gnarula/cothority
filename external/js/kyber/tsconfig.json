@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "outDir": "./built/",
+    "noImplicitAny": false,
+    "module": "es6",
+    "target": "es6",
+    "moduleResolution": "node",
+  },
+  "include": [
+    "./src/**/*",
+    "./node_modules/types-bn/index.d.ts"
+  ]
+}

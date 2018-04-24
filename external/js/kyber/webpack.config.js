@@ -3,7 +3,7 @@ const UglifyJsPlugin = require("uglifyjs-webpack-plugin");
 
 const nodeConfig = {
   target: "node",
-  entry: "./index.js",
+  entry: "./src/index.ts",
   output: {
     filename: "bundle.node.min.js",
     path: path.resolve(__dirname, "dist"),
@@ -12,16 +12,14 @@ const nodeConfig = {
   module: {
     rules: [
       {
-        test: /\.js$/,
+        test: /\.tsx?$/,
         exclude: /(node_modules|bower_components)/,
-        use: {
-          loader: "babel-loader",
-          options: {
-            presets: ["stage-3"]
-          }
-        }
+        use: "ts-loader"
       }
     ]
+  },
+  resolve: {
+    extensions: [".tsx", ".ts", ".js"]
   },
   plugins: [new UglifyJsPlugin()]
 };
@@ -37,16 +35,14 @@ const browserConfig = {
   module: {
     rules: [
       {
-        test: /\.js$/,
+        test: /\.tsx?$/,
         exclude: /(node_modules|bower_components)/,
-        use: {
-          loader: "babel-loader",
-          options: {
-            presets: ["stage-3"]
-          }
-        }
+        use: "ts-loader"
       }
     ]
+  },
+  resolve: {
+    extensions: [".tsx", ".ts", ".js"]
   },
   plugins: [new UglifyJsPlugin()]
 };
