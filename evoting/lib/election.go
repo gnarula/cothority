@@ -80,7 +80,7 @@ func GetElection(s *skipchain.Service, id skipchain.SkipBlockID,
 		return nil, fmt.Errorf("no election structure in %s", id.Short())
 	}
 	election := transaction.Election
-	err = election.setStage(s)
+	// err = election.setStage(s)
 	if err != nil {
 		return nil, err
 	}
