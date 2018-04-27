@@ -12,6 +12,17 @@ const nodeConfig = {
   module: {
     rules: [
       {
+        test: /\.js$/,
+        exclude: /(node_modules|bower_components)/,
+        use: {
+          loader: "babel-loader",
+          options: {
+            presets: ["env"],
+            plugins: [require("babel-plugin-transform-object-rest-spread")]
+          }
+        }
+      },
+      {
         test: /\.tsx?$/,
         exclude: /(node_modules|bower_components)/,
         use: [
@@ -34,7 +45,7 @@ const nodeConfig = {
 };
 
 const browserConfig = {
-  entry: "./index.js",
+  entry: "./src/index.ts",
   output: {
     filename: "bundle.min.js",
     path: path.resolve(__dirname, "dist"),
@@ -43,6 +54,17 @@ const browserConfig = {
   },
   module: {
     rules: [
+      {
+        test: /\.js$/,
+        exclude: /(node_modules|bower_components)/,
+        use: {
+          loader: "babel-loader",
+          options: {
+            presets: ["env"],
+            plugins: [require("babel-plugin-transform-object-rest-spread")]
+          }
+        }
+      },
       {
         test: /\.tsx?$/,
         exclude: /(node_modules|bower_components)/,
@@ -61,8 +83,8 @@ const browserConfig = {
   },
   resolve: {
     extensions: [".tsx", ".ts", ".js"]
-  },
-  plugins: [new UglifyJsPlugin()]
+  }
+  //plugins: [new UglifyJsPlugin()]
 };
 
 module.exports = [nodeConfig, browserConfig];

@@ -8,7 +8,7 @@ declare module 'bn.js' {
         static isBN (num: any): num is BN
         static max (left: BN, right: BN): BN
         static min (left: BN, right: BN): BN
-        static red (num: BN | string): Red
+        static red (num: BN | string | Uint8Array): Red
         copy (dest: BN): void
         clone (): BN
         strip (): BN

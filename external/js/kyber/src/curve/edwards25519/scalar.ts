@@ -1,7 +1,7 @@
 import { Scalar, Group } from "../../index";
 import BN, { Red } from "bn.js";
 import * as crypto from "crypto";
-import { Ed25519 } from "./curve";
+import Ed25519 from "./curve";
 import { int } from "../../random"
 
 export default class Ed25519Scalar implements Scalar {

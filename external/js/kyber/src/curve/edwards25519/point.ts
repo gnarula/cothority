@@ -1,10 +1,10 @@
 import { Point } from "../../index";
-import { Ed25519 } from "./curve";
+import Ed25519 from "./curve";
 import BN from "bn.js";
 import * as crypto from "crypto";
 import Ed25519Scalar from "./scalar";
 
-type PointType = number | Uint8Array | BN
+export type PointType = number | Uint8Array | BN
 
 export default class Ed25519Point implements Point {
     private curve: Ed25519

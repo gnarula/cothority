@@ -1,3 +1,6 @@
+import * as curve from "./curve";
+import sign from "./sign";
+
 export interface Group {
   scalarLen(): number;
 
@@ -70,4 +73,9 @@ export interface Scalar {
   pick(callback?: (length: number) => Uint8Array): Scalar;
 
   setBytes(bytes: Uint8Array): Scalar;
+}
+
+export default {
+  curve,
+  sign
 }

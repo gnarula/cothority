@@ -9,7 +9,7 @@ const EdDSA = elliptic.eddsa;
 const ec = new EdDSA("ed25519");
 const orderRed = BN.red(ec.curve.n);
 
-export class Ed25519 implements Group {
+export default class Ed25519 implements Group {
     curve: any;
     orderRed: Red;
 
