@@ -154,6 +154,10 @@ type Storage struct {
 func (s *Service) StoreSkipBlock(psbd *StoreSkipBlock) (*StoreSkipBlockReply, error) {
 	// Initial checks on the proposed block.
 	prop := psbd.NewBlock
+	var timeout time.Duration
+	if psbd.Timeout != nil {
+		timeout = time.Duration(*psbd.Timeout) * time.Second
+	}
 	if !s.ServerIdentity().Equal(prop.Roster.Get(0)) {
 		return nil, errors.New(
 			"only leader is allowed to add blocks")
@@ -321,10 +325,12 @@ func (s *Service) StoreSkipBlock(psbd *StoreSkipBlock) (*StoreSkipBlockReply, er
 			}
 		}
 
-		if err := s.forwardLinkLevel0(prev, prop); err != nil {
+		tBegin := time.Now()
+		if err := s.forwardLinkLevel0(prev, prop, timeout); err != nil {
 			return nil, errors.New(
 				"Couldn't get forward signature on block: " + err.Error())
 		}
+		log.Lvlf3("forwardLinkLevel0 took: %v", time.Since(tBegin))
 		changed = append(changed, prev, prop)
 		log.Lvl3("Asking forward-links from all linked blocks")
 		for i, bl := range prop.BackLinkIDs[1:] {
@@ -334,24 +340,28 @@ func (s *Service) StoreSkipBlock(psbd *StoreSkipBlock) (*StoreSkipBlockReply, er
 					"Didn't get skipblock in back-link")
 
 			}
+			tBegin = time.Now()
 			if err := s.forwardLink(
 				&ForwardSignature{
 					TargetHeight: i + 1,
 					Previous:     back.Hash,
 					Newest:       prop,
-				}); err != nil {
+				}, timeout); err != nil {
 				// This is not a critical failure - we have at least
 				// one forward-link
 				log.Lvl1("Couldn't get old block to sign: " + err.Error())
 			}
+			log.Lvlf3("forwardLink took: %v", time.Since(tBegin))
 		}
 	}
 	log.Lvlf3("Propagate %d blocks", len(changed))
+	tBegin := time.Now()
 	if err := s.startPropagation(changed); err != nil {
 		return nil, errors.New(
 			"Couldn't propagate new blocks: " + err.Error())
 
 	}
+	log.Lvlf3("startPropagation took: %v", time.Since(tBegin))
 	reply := &StoreSkipBlockReply{
 		Previous: prev,
 		Latest:   prop,
@@ -816,7 +826,7 @@ func (s *Service) verifySigs(msg, sig []byte) bool {
 // This only works for the level-0 forward link, that is, to link
 // from the latest to the new block. For higher level links, less
 // verifications need to be done using forwardLink.
-func (s *Service) forwardLinkLevel0(src, dst *SkipBlock) error {
+func (s *Service) forwardLinkLevel0(src, dst *SkipBlock, timeout time.Duration) error {
 	if src.GetForwardLen() > 0 {
 		return errors.New("already have forward-link at this height")
 	}
@@ -835,11 +845,13 @@ func (s *Service) forwardLinkLevel0(src, dst *SkipBlock) error {
 		return fmt.Errorf("Couldn't marshal block: %s", err.Error())
 	}
 	fwd := NewForwardLink(src, dst)
-	sig, err := s.startBFT(bftNewBlock, roster, fwd.Hash(), data)
+	tBegin := time.Now()
+	sig, err := s.startBFT(bftNewBlock, roster, fwd.Hash(), data, timeout)
 	if err != nil {
 		log.Error(s.ServerIdentity().Address, "startBFT failed with", err)
 		return err
 	}
+	log.Lvlf3("forwardLinkLevel0: startBFT took %v", time.Since(tBegin))
 	fwd.Signature = *sig
 
 	fwl := s.db.GetByID(src.Hash).ForwardLink
@@ -849,10 +861,14 @@ func (s *Service) forwardLinkLevel0(src, dst *SkipBlock) error {
 		return errors.New("forward-link got signed during our signing")
 	}
 	src.ForwardLink = []*ForwardLink{fwd}
+	tBegin = time.Now()
 	if err = src.VerifyForwardSignatures(); err != nil {
 		return errors.New("Wrong BFT-signature: " + err.Error())
 	}
+	log.Lvlf3("forwardLinkLevel0: VerifyForwardSignatures took %v", time.Since(tBegin))
+	tBegin = time.Now()
 	s.startPropagation([]*SkipBlock{src})
+	log.Lvlf3("forwardLinkLevel0: startPropagation took %v", time.Since(tBegin))
 	return nil
 }
 
@@ -937,7 +953,7 @@ func (s *Service) bftForwardLinkLevel0Ack(msg []byte, data []byte) bool {
 
 // forwardLink receives a signature request of a newly accepted block.
 // It only needs the 2nd-newest block and the forward-link.
-func (s *Service) forwardLink(fs *ForwardSignature) error {
+func (s *Service) forwardLink(fs *ForwardSignature, timeout time.Duration) error {
 	if fs.TargetHeight >= len(fs.Newest.BackLinkIDs) {
 		return errors.New("This backlink-height doesn't exist")
 	}
@@ -953,7 +969,7 @@ func (s *Service) forwardLink(fs *ForwardSignature) error {
 		return err
 	}
 	fl := NewForwardLink(from, fs.Newest)
-	sig, err := s.startBFT(bftFollowBlock, from.Roster, fl.Hash(), data)
+	sig, err := s.startBFT(bftFollowBlock, from.Roster, fl.Hash(), data, timeout)
 	if err != nil {
 		return errors.New("Couldn't get signature: " + err.Error())
 	}
@@ -1036,7 +1052,7 @@ func (s *Service) bftForwardLinkAck(msg, data []byte) bool {
 }
 
 // startBFT starts a BFT-protocol with the given parameters.
-func (s *Service) startBFT(proto string, roster *onet.Roster, msg, data []byte) (*byzcoinx.FinalSignature, error) {
+func (s *Service) startBFT(proto string, roster *onet.Roster, msg, data []byte, timeout time.Duration) (*byzcoinx.FinalSignature, error) {
 
 	if len(roster.List) == 0 {
 		return nil, errors.New("found empty Roster")
@@ -1069,6 +1085,10 @@ func (s *Service) startBFT(proto string, roster *onet.Roster, msg, data []byte) 
 	root.Timeout = s.propTimeout / 2
 	if s.bftTimeout != 0 {
 		root.Timeout = s.bftTimeout
+	}
+	if timeout != 0 {
+		root.Timeout = timeout
+		log.Lvlf3("root.Timeout = %v", timeout)
 	}
 
 	if err := node.Start(); err != nil {

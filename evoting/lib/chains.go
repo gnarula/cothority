@@ -76,3 +76,35 @@ func Store(s *skipchain.Service, ID skipchain.SkipBlockID, transaction *Transact
 	}
 	return storeSkipBlockReply.Latest.Hash, nil
 }
+
+// StoreWithCustomTimeout appends a new block holding data to an existing skipchain using the
+// skipchain service and passes a custom timeout to StoreSkipBlock
+func StoreWithCustomTimeout(s *skipchain.Service, ID skipchain.SkipBlockID,
+	transaction *Transaction, timeout int) (skipchain.SkipBlockID, error) {
+	db := s.GetDB()
+	latest, err := db.GetLatest(db.GetByID(ID))
+	if err != nil {
+		return nil, errors.New("couldn't find latest block: " + err.Error())
+	}
+
+	enc, err := protobuf.Encode(transaction)
+	if err != nil {
+		return nil, err
+	}
+
+	block := latest.Copy()
+	block.Data = enc
+	block.GenesisID = block.SkipChainID()
+	block.Index++
+	// Using an unset LatestID with block.GenesisID set is to ensure concurrent
+	// append.
+	storeSkipBlockReply, err := s.StoreSkipBlock(&skipchain.StoreSkipBlock{
+		NewBlock:          block,
+		TargetSkipChainID: latest.SkipChainID(),
+		Timeout:           &timeout,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return storeSkipBlockReply.Latest.Hash, nil
+}

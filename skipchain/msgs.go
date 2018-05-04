@@ -72,6 +72,7 @@ type StoreSkipBlock struct {
 	TargetSkipChainID SkipBlockID
 	NewBlock          *SkipBlock
 	Signature         *[]byte
+	Timeout           *int
 }
 
 // StoreSkipBlockReply - returns the signed SkipBlock with updated backlinks

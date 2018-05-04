@@ -46,7 +46,7 @@ func init() {
 }
 
 // timeout for protocol termination.
-const timeout = 120 * time.Second
+const timeout = 150 * time.Second
 
 // serviceID is the onet identifier.
 var serviceID onet.ServiceID
@@ -342,7 +342,7 @@ func (s *Service) Cast(req *evoting.Cast) (*evoting.CastReply, error) {
 		return nil, errOnlyLeader
 	}
 	transaction := lib.NewTransaction(req.Ballot, req.User, req.Signature)
-	skipblockID, err := lib.Store(s.skipchain, req.ID, transaction)
+	skipblockID, err := lib.StoreWithCustomTimeout(s.skipchain, req.ID, transaction, 5)
 	if err != nil {
 		return nil, err
 	}
@@ -815,6 +815,7 @@ func new(context *onet.Context) (onet.Service, error) {
 		skipchain: context.Service(skipchain.ServiceName).(*skipchain.Service),
 		rl:        recentLog{N: 100},
 	}
+	service.skipchain.SetBFTTimeout(120 * time.Second)
 
 	service.RegisterHandlers(
 		service.Ping,
