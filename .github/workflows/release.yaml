@@ -20,6 +20,8 @@ jobs:
       - uses: actions/setup-go@v2
         with:
           go-version: ${{ env.GO_VERSION }}
+      - name: Set RELEASE env
+        run: echo "RELEASE=${GITHUB_REF#refs/*/}" >> $GITHUB_ENV
       - name: Build binaries
         working-directory: ./conode
         run: |
@@ -42,8 +44,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./conode/conode-${{ github.ref }}.tar.gz
-          asset_name: conode-${{ github.ref }}.tar.gz
+          asset_path: ./conode/conode-${{ env.RELEASE }}.tar.gz
+          asset_name: conode-${{ env.RELEASE }}.tar.gz
           asset_content_type: application/gzip
       - name: Upload conode tools tarball
         id: upload-bintools
@@ -52,6 +54,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./conode/conode-tools-${{ github.ref }}.tar.gz
-          asset_name: conode-tools-${{ github.ref }}.tar.gz
+          asset_path: ./conode/conode-tools-${{ env.RELEASE }}.tar.gz
+          asset_name: conode-tools-${{ env.RELEASE }}.tar.gz
           asset_content_type: application/gzip
